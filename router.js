@@ -1,22 +1,35 @@
 "use strict";
 
-var Router = (function() {
+const Router = (function() {
   function Router(options) {
-    var route = function(request, response) {
-      var path = (request.url.replace(/\//gi, ",/")).split(",");
-      var step = 1;
-      var trail = this.map;
-      var handler = this.notFoundHandler;
+    options = options || {};
+    this.routes = options.routes || {};
+    this.notFoundHandler = options.notFoundHandler;
+    
+    // This works well, but is inelegant and rough. 
+    let route = function(request, response) {
+      
+      // Trim leading/trailing slashes from the request and split
+      let path = request.url.replace(/^\//, "").replace(/\/$/, "").split("/");
+      let step = 0;
+      let numberOfSteps = path.length - 1;
+      let trail = this.routes;
+      let handler = this.notFoundHandler;
+      
       while (trail && trail.hasOwnProperty(path[step])) {
-        var segment = trail[path[step]];
-        handler = segment.handler || handler;
+        let segment = trail[path[step]];
+        let useArgHandler = (step < numberOfSteps) && segment.handlers.withArgs;
+        let handlerContext = useArgHandler ? segment.handlers.withArgs : segment.handlers;
+        handler = handlerContext[request.method] || handlerContext || handler;
         trail = segment.routes;
         step++;
       }
+      
+      if (typeof handler !== "function") {
+        handler = this.notFoundHandler;
+      }
       handler(request, response, path.slice(step));
     };
-    this.map = options.map || {};
-    this.notFoundHandler = options.notFoundHandler;
 
     //Using the Node HTTP server can break scope when routing, so we bind it to
     //this scope here for safety and ease of use.
@@ -24,10 +37,10 @@ var Router = (function() {
   }
 
   Router.prototype.addRoute = function(path, handler) {
-    path = path.replace(/\//gi, ",/").split(",");
-    var step = 1;
-    var trail = this.map;
-    var currentLocation;
+    path = path.split("/");
+    let step = 1;
+    let trail = this.routes;
+    let currentLocation;
     while (path[step]) {
       trail[path[step]] = trail[path[step]] || {};
       trail[path[step]].routes = trail[path[step]].routes || {};
